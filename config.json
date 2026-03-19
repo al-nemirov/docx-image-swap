@@ -1,0 +1,48 @@
+{
+    "name": "DOCX Image Swap",
+    "description": "Extract images → Manual swap → Reinsert. Text untouched.",
+    "version": "1.0",
+    "steps": [
+        {
+            "name": "1. Extract images from DOCX",
+            "module": "step_01_extract_images.py",
+            "enabled": true,
+            "jpeg_quality": 95,
+            "max_width": 4096,
+            "max_height": 4096,
+            "optimize": true
+        },
+        {
+            "name": "2. Manual image swap",
+            "module": "step_02_manual_swap.py",
+            "type": "manual",
+            "enabled": true,
+            "config": {
+                "timeout_seconds": 3600,
+                "can_skip": true
+            }
+        },
+        {
+            "name": "3. Reinsert images into DOCX",
+            "module": "step_03_insert_images.py",
+            "enabled": true,
+            "config": {
+                "max_width_inches": 5.5,
+                "max_height_inches": 8.0,
+                "center_images": true,
+                "preserve_aspect_ratio": true
+            }
+        },
+        {
+            "name": "4. Save result",
+            "module": "step_04_save_result.py",
+            "enabled": true,
+            "config": {
+                "create_zip": false,
+                "copy_metadata": true,
+                "copy_images": true,
+                "filename_template": "{name}_img_swap_{timestamp}.docx"
+            }
+        }
+    ]
+}
