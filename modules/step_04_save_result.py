@@ -11,7 +11,7 @@ import shutil
 import json
 import time
 from datetime import datetime
-from typing import Dict, Any, Callable, List
+from typing import Any, Callable, Dict, List
 
 try:
     from docx import Document
@@ -20,7 +20,7 @@ except ImportError:
     HAS_DOCX = False
 
 
-def run(work_path: Path, step_config: Dict[str, Any], log_func: Callable[[str], None], ai_client=None, **kwargs) -> bool:
+def run(work_path: Path, step_config: Dict[str, Any], log_func: Callable[[str], None], ai_client: Any = None, **kwargs: Any) -> bool:
     """Save final result to output folder."""
     start_time = time.time()
 
@@ -48,7 +48,7 @@ def run(work_path: Path, step_config: Dict[str, Any], log_func: Callable[[str], 
 
         # --- CHECKS ---
         if not working_docx.exists():
-            log_func("Error: working.docx not found!")
+            log_func("[ERROR] working.docx not found in temp/ directory")
             return False
 
         file_size_mb = working_docx.stat().st_size / (1024 * 1024)
@@ -106,7 +106,7 @@ def run(work_path: Path, step_config: Dict[str, Any], log_func: Callable[[str], 
         shutil.copy2(working_docx, output_path)
 
         if not output_path.exists():
-            log_func("Error: file not created!")
+            log_func("[ERROR] Output file was not created — check disk space and permissions")
             return False
 
         final_size_mb = output_path.stat().st_size / (1024 * 1024)
@@ -165,7 +165,7 @@ def run(work_path: Path, step_config: Dict[str, Any], log_func: Callable[[str], 
         return True
 
     except Exception as e:
-        log_func(f"Critical error: {e}")
+        log_func(f"[CRITICAL] Unhandled error while saving result: {e}")
         import traceback
         for line in traceback.format_exc().splitlines():
             if line.strip():

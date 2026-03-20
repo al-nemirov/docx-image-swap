@@ -38,7 +38,7 @@ except ImportError:
     HAS_PIL = False
 
 
-def run(work_path: Path, step_config: Dict[str, Any], log_func: Callable[[str], None], ai_client=None, **kwargs) -> bool:
+def run(work_path: Path, step_config: Dict[str, Any], log_func: Callable[[str], None], ai_client: Optional[Any] = None, **kwargs: Any) -> bool:
     """
     Insert images from images/ at anchor positions {{img_N}} in working.docx.
 
@@ -53,8 +53,8 @@ def run(work_path: Path, step_config: Dict[str, Any], log_func: Callable[[str], 
     start_time = time.time()
 
     if not HAS_DOCX:
-        log_func("Missing library: python-docx")
-        log_func("   Install: pip install python-docx")
+        log_func("[ERROR] Required library not installed: python-docx")
+        log_func("   Run: pip install python-docx")
         return False
 
     try:
@@ -78,16 +78,16 @@ def run(work_path: Path, step_config: Dict[str, Any], log_func: Callable[[str], 
 
         # --- CHECKS ---
         if not working_docx.exists():
-            log_func("Error: working.docx not found!")
+            log_func("[ERROR] working.docx not found in temp/ directory")
             return False
 
         if not image_map_path.exists():
-            log_func("Error: image_map.json not found!")
-            log_func("   Run the extraction step first.")
+            log_func("[ERROR] image_map.json not found in temp/ directory")
+            log_func("   Run the extraction step (step 01) first.")
             return False
 
         if not images_dir.exists():
-            log_func("Error: images/ folder not found!")
+            log_func("[ERROR] images/ folder not found — nothing to insert")
             return False
 
         # --- LOAD MAP ---
@@ -225,7 +225,7 @@ def run(work_path: Path, step_config: Dict[str, Any], log_func: Callable[[str], 
         return True
 
     except Exception as e:
-        log_func(f"Critical error: {e}")
+        log_func(f"[CRITICAL] Unhandled error during image insertion: {e}")
         import traceback
         log_func("Traceback:")
         for line in traceback.format_exc().splitlines():
