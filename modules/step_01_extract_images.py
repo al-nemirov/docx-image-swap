@@ -12,7 +12,7 @@ from pathlib import Path
 import shutil
 import json
 import io
-from typing import Dict, Set
+from typing import Any, Callable, Dict, Optional, Set
 
 try:
     from docx import Document
@@ -23,7 +23,13 @@ except ImportError:
     HAS_LIBS = False
 
 
-def run(work_path: Path, step_config: dict, log_func, ai_client=None, **kwargs) -> bool:
+def run(
+    work_path: Path,
+    step_config: Dict[str, Any],
+    log_func: Callable[[str], None],
+    ai_client: Optional[Any] = None,
+    **kwargs: Any,
+) -> bool:
     """
     Main function: extract, optimize, and replace images with anchors.
 
@@ -37,8 +43,8 @@ def run(work_path: Path, step_config: dict, log_func, ai_client=None, **kwargs) 
         bool: True on success
     """
     if not HAS_LIBS:
-        log_func("Missing libraries: python-docx, Pillow")
-        log_func("   Install: pip install python-docx pillow")
+        log_func("[ERROR] Required libraries not installed: python-docx, Pillow")
+        log_func("   Run: pip install python-docx pillow")
         return False
 
     try:
@@ -70,7 +76,7 @@ def run(work_path: Path, step_config: dict, log_func, ai_client=None, **kwargs) 
             else:
                 docx_files = list(source_dir.glob("*.docx"))
                 if not docx_files:
-                    log_func("No DOCX files found")
+                    log_func("[ERROR] No .docx files found in source/ directory")
                     return False
                 source_file = docx_files[0]
 
@@ -309,7 +315,7 @@ def run(work_path: Path, step_config: dict, log_func, ai_client=None, **kwargs) 
         return True
 
     except Exception as e:
-        log_func(f"Critical error: {e}")
+        log_func(f"[CRITICAL] Unhandled error during image extraction: {e}")
         import traceback
         log_func("Traceback:")
         for line in traceback.format_exc().split('\n'):
