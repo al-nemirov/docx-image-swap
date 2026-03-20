@@ -2,7 +2,7 @@
 """
 DOCX Image Swap — CLI Runner
 =============================
-Extract images from DOCX → Manual swap → Reinject → Save result.
+Extract images from DOCX -> Manual swap -> Reinject -> Save result.
 
 Usage:
     python run.py                      (uses first .docx in source/)
@@ -13,26 +13,43 @@ import sys
 import json
 import shutil
 from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
 
-ROOT = Path(__file__).parent
-CONFIG_FILE = ROOT / "config.json"
-SOURCE_DIR = ROOT / "source"
-WORK_DIR = ROOT / "temp"
-IMAGES_DIR = ROOT / "images"
-OUTPUT_DIR = ROOT / "output"
+ROOT: Path = Path(__file__).parent
+CONFIG_FILE: Path = ROOT / "config.json"
+SOURCE_DIR: Path = ROOT / "source"
+WORK_DIR: Path = ROOT / "temp"
+IMAGES_DIR: Path = ROOT / "images"
+OUTPUT_DIR: Path = ROOT / "output"
+
+# Step module function signature
+StepFunc = Callable[..., bool]
 
 
-def log(msg: str):
+def log(msg: str) -> None:
+    """Print an indented log message to stdout. / Вывести сообщение в консоль."""
     print(f"  {msg}")
 
 
-def load_config() -> dict:
-    with open(CONFIG_FILE, encoding="utf-8") as f:
-        return json.load(f)
+def load_config() -> Dict[str, Any]:
+    """Load pipeline configuration from config.json.
+    Загрузить конфигурацию пайплайна из config.json.
+    """
+    if not CONFIG_FILE.exists():
+        print("[ОШИБКА] Файл конфигурации не найден / Config file not found: config.json")
+        sys.exit(1)
+    try:
+        with open(CONFIG_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"[ОШИБКА] Некорректный JSON в config.json / Invalid JSON in config.json: {e}")
+        sys.exit(1)
 
 
-def find_input_file(arg: str = None) -> Path:
-    """Find input DOCX: from argument or first file in source/."""
+def find_input_file(arg: Optional[str] = None) -> Path:
+    """Find input DOCX: from CLI argument or first file in source/.
+    Найти входной DOCX: из аргумента командной строки или первый файл в source/.
+    """
     if arg:
         p = Path(arg)
         if p.exists():
@@ -40,79 +57,147 @@ def find_input_file(arg: str = None) -> Path:
         p = SOURCE_DIR / arg
         if p.exists():
             return p
-        print(f"File not found: {arg}")
+        print(f"[ОШИБКА] Файл не найден / File not found: {arg}")
         sys.exit(1)
 
     SOURCE_DIR.mkdir(exist_ok=True)
-    docx_files = list(SOURCE_DIR.glob("*.docx"))
+    docx_files: List[Path] = sorted(SOURCE_DIR.glob("*.docx"))
     if not docx_files:
-        print(f"No .docx files found in {SOURCE_DIR}/")
-        print("Place a .docx file there or pass a path as argument.")
+        print(f"[ОШИБКА] Нет .docx файлов в {SOURCE_DIR}/")
+        print(f"         No .docx files found in {SOURCE_DIR}/")
+        print("  Поместите .docx файл в эту папку или укажите путь аргументом.")
+        print("  Place a .docx file there or pass a path as argument.")
         sys.exit(1)
     return docx_files[0]
 
 
-def main():
-    config = load_config()
-    steps = config.get("steps", [])
+def import_step_modules() -> List[StepFunc]:
+    """Import and return all step runner functions.
+    Импортировать и вернуть все функции шагов пайплайна.
+    """
+    try:
+        from modules.step_01_extract_images import run as step_01
+        from modules.step_02_manual_swap import run as step_02
+        from modules.step_03_insert_images import run as step_03
+        from modules.step_04_save_result import run as step_04
+    except ImportError as e:
+        print(f"[ОШИБКА] Не удалось импортировать модули / Failed to import modules: {e}")
+        sys.exit(1)
 
-    # Find input file
-    arg = sys.argv[1] if len(sys.argv) > 1 else None
-    input_file = find_input_file(arg)
-    print(f"\nDOCX Image Swap")
-    print(f"Input: {input_file.name}\n")
+    return [step_01, step_02, step_03, step_04]
 
-    # Prepare work directory
+
+def prepare_work_dir(input_file: Path) -> Path:
+    """Create working directories and prepare the working copy.
+    Создать рабочие директории и подготовить рабочую копию документа.
+    """
     WORK_DIR.mkdir(exist_ok=True)
     IMAGES_DIR.mkdir(exist_ok=True)
     OUTPUT_DIR.mkdir(exist_ok=True)
 
-    # Copy source to work dir
-    work_docx = WORK_DIR / "working.docx"
+    work_docx: Path = WORK_DIR / "working.docx"
     shutil.copy2(input_file, work_docx)
 
-    # Also copy to source info for step_04
-    source_info = {"original_name": input_file.stem, "original_path": str(input_file)}
+    source_info: Dict[str, str] = {
+        "original_name": input_file.stem,
+        "original_path": str(input_file),
+    }
     with open(WORK_DIR / "source_info.json", "w", encoding="utf-8") as f:
         json.dump(source_info, f, ensure_ascii=False)
 
-    # Import step modules
-    from modules.step_01_extract_images import run as step_01
-    from modules.step_02_manual_swap import run as step_02
-    from modules.step_03_insert_images import run as step_03
-    from modules.step_04_save_result import run as step_04
+    return work_docx
 
-    step_funcs = [step_01, step_02, step_03, step_04]
 
-    for i, (step_cfg, step_fn) in enumerate(zip(steps, step_funcs)):
-        name = step_cfg.get("name", f"Step {i + 1}")
-        if not step_cfg.get("enabled", True):
-            print(f"[SKIP] {name}")
-            continue
+def run_step(
+    index: int,
+    step_cfg: Dict[str, Any],
+    step_fn: StepFunc,
+    total: int,
+) -> bool:
+    """Execute a single pipeline step. Returns True on success.
+    Выполнить один шаг пайплайна. Возвращает True при успехе.
+    """
+    name: str = step_cfg.get("name", f"Step {index + 1}")
 
-        print(f"[{i + 1}/4] {name}")
+    if not step_cfg.get("enabled", True):
+        print(f"[ПРОПУСК/SKIP] {name}")
+        return True
 
-        # Merge step config
-        merged = {**step_cfg}
-        if "config" in step_cfg:
-            merged.update(step_cfg["config"])
+    print(f"[{index + 1}/{total}] {name}")
 
-        # Manual step — pause for user
-        if step_cfg.get("type") == "manual":
+    # Merge step-level config
+    merged: Dict[str, Any] = {**step_cfg}
+    if "config" in step_cfg:
+        merged.update(step_cfg["config"])
+
+    # Manual step — pause for user input
+    if step_cfg.get("type") == "manual":
+        try:
             step_fn(WORK_DIR, merged, log)
-            print(f"\n  Images are in: {IMAGES_DIR.resolve()}")
-            print(f"  Replace the files (keep filenames) and press Enter.\n")
-            input("  Press Enter to continue...")
-            print()
-            continue
-
-        ok = step_fn(WORK_DIR, merged, log)
-        if not ok:
-            print(f"\n[ERROR] {name} failed. Aborting.")
-            sys.exit(1)
+        except Exception as e:
+            print(f"\n[ОШИБКА/ERROR] {name}: {e}")
+            return False
+        print(f"\n  Изображения находятся в: {IMAGES_DIR.resolve()}")
+        print(f"  Images are in: {IMAGES_DIR.resolve()}")
+        print(f"  Замените файлы (сохраните имена) и нажмите Enter.")
+        print(f"  Replace the files (keep filenames) and press Enter.\n")
+        input("  Нажмите Enter / Press Enter to continue...")
         print()
+        return True
 
-    print(f"Done! Result saved to: {OUTPUT_DIR.resolve()}\n")
+    # Regular step
+    try:
+        ok: bool = step_fn(WORK_DIR, merged, log)
+    except Exception as e:
+        print(f"\n[ОШИБКА/ERROR] Исключение в шаге '{name}' / Exception in step '{name}': {e}")
+        return False
+
+    if not ok:
+        print(f"\n[ОШИБКА/ERROR] Шаг '{name}' не выполнен / Step '{name}' failed. Прерывание / Aborting.")
+        return False
+
+    print()
+    return True
+
+
+def main() -> None:
+    """Main entry point: load config, find input, run all steps.
+    Главная точка входа: загрузка конфигурации, поиск входного файла, запуск всех шагов.
+    """
+    config: Dict[str, Any] = load_config()
+    steps: List[Dict[str, Any]] = config.get("steps", [])
+
+    if not steps:
+        print("[ОШИБКА] В config.json нет шагов / No steps defined in config.json")
+        sys.exit(1)
+
+    # Find input file
+    arg: Optional[str] = sys.argv[1] if len(sys.argv) > 1 else None
+    input_file: Path = find_input_file(arg)
+
+    print(f"\n{'=' * 50}")
+    print(f"  DOCX Image Swap")
+    print(f"  Файл / Input: {input_file.name}")
+    print(f"{'=' * 50}\n")
+
+    # Prepare work directory
+    prepare_work_dir(input_file)
+
+    # Import step modules
+    step_funcs: List[StepFunc] = import_step_modules()
+    total: int = len(steps)
+
+    # Run pipeline
+    for i, (step_cfg, step_fn) in enumerate(zip(steps, step_funcs)):
+        success: bool = run_step(i, step_cfg, step_fn, total)
+        if not success:
+            print(f"\n[ОШИБКА] Пайплайн прерван на шаге {i + 1} / Pipeline aborted at step {i + 1}.")
+            sys.exit(1)
+
+    print(f"{'=' * 50}")
+    print(f"  Готово! Результат сохранён в: {OUTPUT_DIR.resolve()}")
+    print(f"  Done!  Result saved to:       {OUTPUT_DIR.resolve()}")
+    print(f"{'=' * 50}\n")
 
 
 if __name__ == "__main__":
