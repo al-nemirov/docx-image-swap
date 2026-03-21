@@ -144,7 +144,7 @@ def run(work_path: Path, step_config: Dict[str, Any], log_func: Callable[[str], 
         # Collect paragraphs with anchors
         paragraphs_with_anchors = []
         for i, para in enumerate(doc.paragraphs):
-            text = para.text.strip()
+            text = para.text
             if anchor_pattern.search(text):
                 paragraphs_with_anchors.append((i, para, text))
 
@@ -298,7 +298,7 @@ def _insert_image_after_paragraph(doc, para, image_path: Path, width_inches: flo
     """Insert image in a new paragraph after the current one. Remove anchor from text."""
     for run in para.runs:
         if anchor in run.text:
-            run.text = run.text.replace(anchor, "").strip()
+            run.text = run.text.replace(anchor, "")
 
     new_para = doc.add_paragraph()
     run = new_para.add_run()

@@ -115,17 +115,32 @@ def run(
             'total_final': 0
         }
 
-        # --- COLLECT IMAGE RELATIONSHIPS ---
+        # --- COLLECT IMAGE RELATIONSHIPS FROM ALL PARTS ---
         image_parts = {}
         skipped_rels = 0
 
+        # Gather all document parts: main body + headers + footers + footnotes + endnotes
+        all_parts = [doc.part]
+
         for rel in doc.part.rels.values():
-            if "image" in rel.reltype:
-                rId = rel.rId
+            rel_type_lower = rel.reltype.lower()
+            if any(t in rel_type_lower for t in ("header", "footer", "footnotes", "endnotes")):
                 try:
-                    image_parts[rId] = rel.target_part
+                    all_parts.append(rel.target_part)
                 except Exception:
-                    skipped_rels += 1
+                    pass
+
+        for part in all_parts:
+            try:
+                for rel in part.rels.values():
+                    if "image" in rel.reltype:
+                        rId = rel.rId
+                        try:
+                            image_parts[rId] = rel.target_part
+                        except Exception:
+                            skipped_rels += 1
+            except Exception:
+                pass
 
         if skipped_rels > 0:
             log_func(f"   Skipped {skipped_rels} external images")
@@ -140,9 +155,21 @@ def run(
             doc.save(working_docx)
             return True
 
-        # --- FIND ALL DRAWING ELEMENTS ---
-        body = doc.element.body
-        drawings = body.xpath('.//w:drawing | .//wp:inline | .//wp:anchor')
+        # --- FIND ALL DRAWING ELEMENTS (body + headers + footers + notes) ---
+        xml_parts_to_scan = [doc.element.body]
+
+        for rel in doc.part.rels.values():
+            rel_type_lower = rel.reltype.lower()
+            if any(t in rel_type_lower for t in ("header", "footer", "footnotes", "endnotes")):
+                try:
+                    xml_parts_to_scan.append(rel.target_part.element)
+                except Exception:
+                    pass
+
+        drawings = []
+        for xml_part in xml_parts_to_scan:
+            drawings.extend(xml_part.xpath('.//w:drawing | .//wp:inline | .//wp:anchor'))
+
         log_func(f"   Drawing elements found: {len(drawings)}")
 
         # --- PROCESS IMAGES ---

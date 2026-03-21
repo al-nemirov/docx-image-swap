@@ -9,6 +9,7 @@ Copies working.docx and (optionally) images/.
 from pathlib import Path
 import shutil
 import json
+import re
 import time
 from datetime import datetime
 from typing import Any, Callable, Dict, List
@@ -33,6 +34,15 @@ def run(work_path: Path, step_config: Dict[str, Any], log_func: Callable[[str], 
             "filename_template",
             "{name}_img_swap_{timestamp}.docx"
         )
+
+        # --- VALIDATE TEMPLATE ---
+        if re.search(r'(\.\.|[/\\])', filename_template):
+            log_func(
+                "[ERROR] filename_template contains unsafe characters "
+                "(path traversal: '..', '/', '\\'). "
+                "Only simple patterns like '{name}_{index}' are allowed."
+            )
+            return False
 
         log_func("")
         log_func("=" * 70)
@@ -86,6 +96,14 @@ def run(work_path: Path, step_config: Dict[str, Any], log_func: Callable[[str], 
             hour=now.strftime("%H"),
             minute=now.strftime("%M")
         ).replace("__", "_").strip("_")
+
+        # Validate resolved filename against path traversal
+        if re.search(r'(\.\.|[/\\])', output_filename):
+            log_func(
+                f"[ERROR] Resolved filename '{output_filename}' contains unsafe "
+                "path traversal characters. Aborting."
+            )
+            return False
 
         output_path = output_dir / output_filename
 

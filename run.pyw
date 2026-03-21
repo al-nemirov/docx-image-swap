@@ -6,6 +6,7 @@ DOCX Image Swap — GUI (ttkbootstrap)
 import sys
 import json
 import shutil
+import subprocess
 import threading
 import os
 from pathlib import Path
@@ -213,7 +214,7 @@ class App:
                 merged = {**cfg}
                 if "config" in cfg:
                     merged.update(cfg["config"])
-                ok = fn(WORK_DIR, merged, lambda m: self.root.after(0, self._log, m))
+                ok = fn(ROOT, merged, lambda m: self.root.after(0, self._log, m))
                 self.root.after(0, self._step_done, idx, ok)
             except Exception as e:
                 self.root.after(0, self._log, f"  Error: {e}")
@@ -278,9 +279,9 @@ class App:
         if sys.platform == "win32":
             os.startfile(p)
         elif sys.platform == "darwin":
-            os.system(f'open "{p}"')
+            subprocess.run(["open", p])
         else:
-            os.system(f'xdg-open "{p}"')
+            subprocess.run(["xdg-open", p])
 
     def _on_close(self):
         self.root.destroy()
